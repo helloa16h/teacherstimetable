@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teacher Timetable Calendar</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f3f7; margin:0; padding:10px; }
+  .calendar { max-width:1000px; margin:auto; background:#fff; border-radius:20px; box-shadow:0 10px 25px rgba(0,0,0,0.1); padding:20px; }
+  h1 { text-align:center; color:#2c3e50; font-size:2rem; margin-bottom:10px; }
+  p.instructions { text-align:center; color:#636e72; margin-bottom:20px; font-size:1rem; }
+
+  .form { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:20px; }
+  .form input, .form select, .form button, .form textarea { padding:12px; border-radius:12px; border:1px solid #ccc; font-size:14px; width:100%; max-width:250px; box-sizing:border-box; }
+  .form textarea { resize:vertical; height:100px; }
+  .form button { background:linear-gradient(135deg,#6c5ce7,#a29bfe); color:#fff; border:none; cursor:pointer; font-size:14px; padding:12px 18px; max-width:140px; transition: transform 0.2s, box-shadow 0.2s; }
+  .form button:hover { transform: translateY(-3px); box-shadow:0 6px 15px rgba(0,0,0,0.2); }
+  #cancelEditBtn { display:none; background:#fd6b6b; }
+
+  .timetable { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; }
+  .day-column { background:#f9fafc; border-radius:16px; padding:12px; box-shadow: inset 0 0 6px rgba(0,0,0,0.05); }
+  .day-header { font-weight:bold; text-align:center; margin-bottom:10px; padding:5px; border-bottom:2px solid #eee; position:sticky; top:0; background:#f9fafc; font-size:1rem; z-index:1; }
+
+  .class-card { margin:8px 0; padding:12px; border-radius:16px; color:#fff; font-size:14px; text-align:center; background:linear-gradient(135deg,#fd79a8,#e17055); position:relative; transition: transform 0.2s, box-shadow 0.2s; }
+  .class-card:hover { transform:translateY(-4px); box-shadow:0 6px 20px rgba(0,0,0,0.2); }
+  .class-subject { font-weight:bold; font-size:15px; margin-bottom:3px; }
+  .class-time { font-size:13px; margin-bottom:3px; }
+  .class-notes { font-size:13px; margin-bottom:4px; word-wrap:break-word; }
+  .class-quote { font-size:12px; font-style:italic; opacity:0.9; margin-top:4px; }
+  .card-actions { margin-top:6px; display:flex; justify-content:center; gap:5px; }
+  .edit-button, .delete-button { padding:6px 12px; font-size:13px; border:none; border-radius:8px; cursor:pointer; color:#fff; background:#2d3436; transition:0.3s; }
+  .edit-button:hover, .delete-button:hover { background:#636e72; }
+
+  @media screen and (max-width:900px){ .timetable{ grid-template-columns:repeat(3,1fr); } }
+  @media screen and (max-width:600px){ .timetable{ grid-template-columns:repeat(2,1fr); } .form input,.form select,.form textarea,.form button{ max-width:100%; } }
+  @media screen and (max-width:400px){ .timetable{ grid-template-columns:1fr; } h1{ font-size:1.6rem; } }
+</style>
+</head>
+<body>
+<div class="calendar">
+<h1>Teacher Timetable</h1>
+<p class="instructions">Select day, subject, and time from dropdowns. Add notes. Quotes are auto-generated.</p>
+
+<div class="form">
+<select id="day"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select>
+<input type="text" id="subject" placeholder="Subject (Chem, Math, etc.)">
+<input type="time" id="time">
+<textarea id="notes" placeholder="Notes"></textarea>
+<div class="controls">
+<button id="addClassBtn">Add Class</button>
+<button id="cancelEditBtn">Cancel</button>
+</div>
+</div>
+
+<div class="timetable" id="timetable"></div>
+</div>
+
+<script>
+const STORAGE_KEY='teacherTimetable_v2';
+let editing=null;
+const timetableEl=document.getElementById('timetable');
+const daySelect=document.getElementById('day');
+const subjectInput=document.getElementById('subject');
+const timeInput=document.getElementById('time');
+const notesInput=document.getElementById('notes');
+const addBtn=document.getElementById('addClassBtn');
+const cancelBtn=document.getElementById('cancelEditBtn');
+const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+const subjectQuotes={
+Math:["Math is the language of the universe.","Numbers reveal hidden truths.","Embrace logic."],
+Chem:["Chemistry is life itself.","Transform ideas into reactions.","Atoms are building blocks."],
+Physics:["Physics explains the world.","Energy and matter are your tools.","Discover the forces."],
+Bio:["Life is full of wonders.","Explore mysteries of living things.","Curiosity drives biology."],
+English:["Words have power.","Stories shape minds.","Language opens worlds."],
+General:["Keep pushing forward!","Every day is a chance to inspire.","Stay curious and motivated."]
+};
+
+function getRandomQuote(subject){
+for(const key in subjectQuotes){
+if(subject.toLowerCase().includes(key.toLowerCase())){
+const arr=subjectQuotes[key]; return arr[Math.floor(Math.random()*arr.length)];
+}}
+const arr=subjectQuotes.General; return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function loadTimetable(){
+const data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+timetableEl.innerHTML='';
+days.forEach(day=>{
+const col=document.createElement('div'); col.className='day-column';
+col.innerHTML=`<div class="day-header">${day}</div>`;
+const classes=data[day]||[];
+classes.sort((a,b)=>a.time.localeCompare(b.time));
+classes.forEach(cls=>col.appendChild(createCard(day,cls)));
+timetableEl.appendChild(col);
+});
+}
+
+function createCard(day,cls){
+const card=document.createElement('div'); card.className='class-card';
+card.innerHTML=`<div class='class-subject'>${cls.subject}</div><div class='class-time'>${cls.time}</div><div class='class-notes'>${cls.notes||''}</div><div class='class-quote'>${cls.quote}</div><div class='card-actions'><button class='edit-button'>Edit</button><button class='delete-button'>Delete</button></div>`;
+card.querySelector('.edit-button').onclick=()=>startEdit(day,cls.id);
+card.querySelector('.delete-button').onclick=()=>deleteClass(day,cls.id);
+return card;
+}
+
+function startEdit(day,id){
+const data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+const cls=data[day].find(c=>c.id===id);
+editing={day,id};
+subjectInput.value=cls.subject; timeInput.value=cls.time; notesInput.value=cls.notes;
+addBtn.textContent='Save Changes'; cancelBtn.style.display='inline-block';
+}
+
+function deleteClass(day,id){
+const data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+data[day]=data[day].filter(c=>c.id!==id);
+localStorage.setItem(STORAGE_KEY,JSON.stringify(data)); loadTimetable();
+}
+
+function resetForm(){ subjectInput.value=''; timeInput.value=''; notesInput.value=''; editing=null; addBtn.textContent='Add Class'; cancelBtn.style.display='none'; }
+
+addBtn.onclick=()=>{
+const subject=subjectInput.value.trim(); const time=timeInput.value; const notes=notesInput.value.trim(); const day=daySelect.value;
+if(!subject||!time){alert('Enter subject and time'); return;}
+const data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+if(!data[day]) data[day]=[];
+if(editing){
+const cls=data[editing.day].find(c=>c.id===editing.id);
+cls.subject=subject; cls.time=time; cls.notes=notes; cls.quote=getRandomQuote(subject); 
+if(editing.day!==day){ data[day].push(cls); data[editing.day]=data[editing.day].filter(c=>c.id!==editing.id); }
+}else{
+const id=Date.now();
+data[day].push({id,subject,time,notes,quote:getRandomQuote(subject)});
+}
+localStorage.setItem(STORAGE_KEY,JSON.stringify(data)); resetForm(); loadTimetable();
+};
+
+cancelBtn.onclick=resetForm;
+window.onload=loadTimetable;
+</script>
+</body>
+</html>
